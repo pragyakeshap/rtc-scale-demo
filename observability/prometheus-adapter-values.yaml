@@ -1,0 +1,12 @@
+rules:
+  default: false
+  custom:
+    - seriesQuery: '{__name__="app_request_latency_p95_seconds", namespace!="", pod!=""}'
+      resources:
+        overrides:
+          namespace: {resource: "namespace"}
+          pod: {resource: "pod"}
+      name:
+        matches: "app_request_latency_p95_seconds"
+        as: "app_latency_p95_seconds"
+      metricsQuery: 'avg by (namespace, pod) (app_request_latency_p95_seconds{<<.LabelMatchers>>})'

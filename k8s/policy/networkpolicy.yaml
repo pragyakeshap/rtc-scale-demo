@@ -1,0 +1,16 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-metrics-and-ingress
+  namespace: rtc
+spec:
+  podSelector:
+    matchLabels:
+      app: gpu-media
+  policyTypes: ["Ingress"]
+  ingress:
+  - from:
+    - podSelector: {}   # tighten in prod
+    ports:
+    - protocol: TCP
+      port: 8080

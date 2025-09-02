@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpu-media
+  namespace: rtc
+  labels:
+    app: gpu-media
+spec:
+  type: ClusterIP
+  selector:
+    app: gpu-media
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080

@@ -1,0 +1,20 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: gpu-media-latency
+  namespace: rtc
+spec:
+  scaleTargetRef:
+    name: gpu-media
+  pollingInterval: 10
+  cooldownPeriod: 60
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc:9090
+      metricName: app_latency_p95_seconds
+      query: |
+        histogram_quantile(0.95, sum(rate(app_request_latency_seconds_bucket[2m])) by (le))
+      threshold: "0.20"

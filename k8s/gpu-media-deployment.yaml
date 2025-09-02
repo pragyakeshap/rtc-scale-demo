@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpu-media
+  namespace: rtc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gpu-media
+  template:
+    metadata:
+      labels:
+        app: gpu-media
+    spec:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      containers:
+      - name: gpu-media
+        image: gcr.io/YOUR_PROJECT/gpu-media:v1
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: CUDA_WANTED
+          value: "true"
+        ports:
+        - name: http
+          containerPort: 8080
+        resources:
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+            nvidia.com/gpu: 1
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+            nvidia.com/gpu: 1
+        readinessProbe:
+          httpGet: { path: /healthz, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet: { path: /healthz, port: 8080 }
+          initialDelaySeconds: 20
+          periodSeconds: 10
