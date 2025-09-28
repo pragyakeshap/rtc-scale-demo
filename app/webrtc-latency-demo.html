@@ -52,104 +52,108 @@
   </h1>
   <p class="sub">Test endpoint latency and see p95, replicas, and rough $/hour. Compare CPU-only vs GPU mode.</p>
 
-  <div class="card controls">
-    <label>Endpoint URL</label>
-    <input id="endpoint" value="http://localhost:8080/process" />
+  <div class="card">
+    <div class="row" style="align-items:flex-start; gap:20px">
+      <!-- Main Controls Section -->
+      <div class="controls" style="flex:2; min-width:0">
+        <label>Endpoint URL</label>
+        <input id="endpoint" value="http://localhost:8080/process" />
 
-    <div class="row">
-      <div style="flex:1; min-width:0">
-        <label>Concurrency</label>
-        <input id="concurrency" type="number" min="1" max="200" value="20" />
+        <div class="row">
+          <div style="flex:1; min-width:0">
+            <label>Concurrency</label>
+            <input id="concurrency" type="number" min="1" max="200" value="20" />
+          </div>
+          <div style="flex:1; min-width:0">
+            <label>Pixels</label>
+            <select id="pixels">
+              <option>1280x720</option>
+              <option selected>1920x1080</option>
+              <option>2560x1440</option>
+            </select>
+          </div>
+          <div style="flex:1; min-width:0">
+            <label>Iters</label>
+            <input id="iters" type="number" min="1" max="50" value="12" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <div style="flex:1">
+            <label>Bucket Size (p95 chart)</label>
+            <select id="bucketSize">
+              <option value="1000">1s</option>
+              <option value="5000" selected>5s</option>
+              <option value="10000">10s</option>
+              <option value="30000">30s</option>
+            </select>
+          </div>
+          <div style="display:flex; gap:10px; align-items:flex-end">
+            <button class="start" id="startBtn">Start</button>
+            <button class="stop" id="stopBtn">Stop</button>
+            <button class="pill" id="gpuToggle" style="cursor:pointer; font-weight:600">🚀 Enable GPU</button>
+          </div>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><h3>Last (ms)</h3><div class="val" id="current">–</div></div>
+          <div class="stat"><h3>Avg (ms)</h3><div class="val" id="avg">–</div></div>
+          <div class="stat"><h3>p95 (ms)</h3><div class="val" id="p95">–</div></div>
+          <div class="stat"><h3>RPS (req/s)</h3><div class="val" id="rps">–</div></div>
+        </div>
+        <div class="hint">Last = most recent request. Avg = rolling average. p95 = per-bucket (size above). RPS = requests finished in the last second.</div>
+
+        <div class="bar-wrap"><div class="bar" id="bar"></div></div>
+
+        <div class="two">
+          <div>
+            <div class="mini">Replicas</div>
+            <input id="replicas" type="number" min="1" value="1" style="width:80px; margin-top:4px" />
+          </div>
+          <div>
+            <div class="mini">Cost estimate ($/hour)</div>
+            <div class="pill" style="margin-top:4px">≈ <span id="costNow">0.00</span> $/hr</div>
+          </div>
+        </div>
       </div>
-      <div style="flex:1; min-width:0">
-        <label>Pixels</label>
-        <select id="pixels">
-          <option>1280x720</option>
-          <option selected>1920x1080</option>
-          <option>2560x1440</option>
-        </select>
-      </div>
-      <div style="flex:1; min-width:0">
-        <label>Iters</label>
-        <input id="iters" type="number" min="1" max="50" value="12" />
+
+      <!-- Video Section -->
+      <div style="flex:1; min-width:300px; max-width:350px">
+        <div class="mini">Video Smoothness Simulator</div>
+        <video id="demoVideo" width="100%" muted playsinline loop style="border:1px solid #d1d5db; border-radius:8px; margin-top:6px"></video>
+        <div class="mini" style="margin-top:8px">
+          Source:
+          <select id="videoSource" style="margin-left:6px">
+            <option value="sample">Sample clip</option>
+            <option value="webcam">Webcam</option>
+          </select>
+        </div>
+        <div class="mini" style="margin-top:6px">
+          <label style="display:block; margin-bottom:4px">
+            <input id="simToggle" type="checkbox" checked>
+            Simulate choppy when p95 is high
+          </label>
+          <label>
+            Threshold p95 (ms):
+            <input id="simThresh" type="number" value="250" style="width:60px; margin-left:4px">
+          </label>
+        </div>
+        <div class="stat" style="text-align:left; margin-top:10px">
+          <h3>Video Stats</h3>
+          <div class="mini">Mode: <span id="vMode">—</span></div>
+          <div class="mini">FPS (approx): <span id="vFps">—</span></div>
+          <div class="mini">Dropped frames (sim): <span id="vDrops">0</span></div>
+          <div class="mini">Playback: <span id="vState">—</span></div>
+        </div>
       </div>
     </div>
 
-    <div class="row" style="margin-top:10px">
-      <div style="flex:1">
-        <label>Bucket Size (p95 chart)</label>
-        <select id="bucketSize">
-          <option value="1000">1s</option>
-          <option value="5000" selected>5s</option>
-          <option value="10000">10s</option>
-          <option value="30000">30s</option>
-        </select>
-      </div>
-      <div style="display:flex; gap:10px; align-items:flex-end">
-        <button class="start" id="startBtn">Start</button>
-        <button class="stop" id="stopBtn">Stop</button>
-        <button class="pill" id="gpuToggle" style="cursor:pointer; font-weight:600">🚀 Enable GPU</button>
-      </div>
-    </div>
-
-    <div class="stats">
-      <div class="stat"><h3>Last (ms)</h3><div class="val" id="current">–</div></div>
-      <div class="stat"><h3>Avg (ms)</h3><div class="val" id="avg">–</div></div>
-      <div class="stat"><h3>p95 (ms)</h3><div class="val" id="p95">–</div></div>
-      <div class="stat"><h3>RPS (req/s)</h3><div class="val" id="rps">–</div></div>
-    </div>
-    <div class="hint">Last = most recent request. Avg = rolling average. p95 = per-bucket (size above). RPS = requests finished in the last second.</div>
-
-    <div class="bar-wrap"><div class="bar" id="bar"></div></div>
-
-    <div class="two">
-      <div>
-        <div class="mini">Replicas</div>
-        <input id="replicas" type="number" min="1" value="1" style="width:80px; margin-top:4px" />
-      </div>
-      <div>
-        <div class="mini">Cost estimate ($/hour)</div>
-        <div class="pill" style="margin-top:4px">≈ <span id="costNow">0.00</span> $/hr</div>
-      </div>
-    </div>
-
-    <div style="margin-top:14px">
+    <!-- Chart Section (full width below) -->
+    <div style="margin-top:20px">
       <div class="mini">Latency p95 (bucketed)</div>
       <canvas id="chart" width="800" height="180"></canvas>
     </div>
   </div>
-  <div class="card" style="margin-top:14px">
-  <div class="row" style="align-items:flex-end; gap:14px">
-    <div style="flex:1">
-      <div class="mini">Video Smoothness Simulator</div>
-      <video id="demoVideo" width="100%" muted playsinline loop style="border:1px solid #d1d5db; border-radius:8px"></video>
-      <div class="mini" style="margin-top:6px">
-        Source:
-        <select id="videoSource">
-          <option value="sample">Sample clip</option>
-          <option value="webcam">Webcam</option>
-        </select>
-        <label style="margin-left:10px">
-          <input id="simToggle" type="checkbox" checked>
-          Simulate choppy when p95 is high
-        </label>
-        <label style="margin-left:10px">
-          Threshold p95 (ms):
-          <input id="simThresh" type="number" value="250" style="width:70px">
-        </label>
-      </div>
-    </div>
-    <div style="width:240px">
-      <div class="stat" style="text-align:left">
-        <h3>Video Stats</h3>
-        <div class="mini">Mode: <span id="vMode">—</span></div>
-        <div class="mini">FPS (approx): <span id="vFps">—</span></div>
-        <div class="mini">Dropped frames (sim): <span id="vDrops">0</span></div>
-        <div class="mini">Playback: <span id="vState">—</span></div>
-      </div>
-    </div>
-  </div>
-</div>
 
 </div>
 
