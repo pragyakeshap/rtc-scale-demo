@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>WebRTC Latency Demo – CPU vs GPU</title>
+<style>
+  :root {
+    --bg:#f9fafb; --card:#ffffff; --muted:#6b7280;
+    --accent:#2563eb; --warn:#f59e0b; --bad:#dc2626; --text:#111827;
+  }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width:950px; margin:32px auto; padding:0 16px; }
+  h1 { font-size:22px; margin:0 0 8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+  .left { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .clock { font-size:13px; color:var(--muted); }
+  p.sub { color:var(--muted); margin:0 0 16px; }
+  .card { background:var(--card); border-radius:12px; padding:16px; box-shadow:0 3px 10px rgba(0,0,0,.08); }
+  .controls label { display:block; font-size:12px; color:var(--muted); margin:10px 0 6px; }
+  .controls input, .controls select { width:100%; padding:8px 10px; border-radius:8px; border:1px solid #d1d5db; background:#fff; color:var(--text); box-sizing:border-box; }
+  .row { display:flex; gap:10px; }
+  button { padding:9px 14px; border:0; border-radius:8px; cursor:pointer; font-weight:600; }
+  .start { background:var(--accent); color:#fff; }
+  .stop { background:#e5e7eb; color:#111827; }
+  .stats { display:grid; grid-template-columns: repeat(4,1fr); gap:10px; margin-top:10px; }
+  .stat { background:#f3f4f6; border:1px solid #d1d5db; border-radius:8px; padding:10px; text-align:center; }
+  .stat h3 { margin:2px 0 6px; font-size:12px; color:var(--muted); font-weight:600; }
+  .stat .val { font-size:18px; font-weight:700; }
+  .hint { margin-top:6px; font-size:12px; color:var(--muted); }
+  .bar-wrap { margin-top:12px; background:#f3f4f6; border:1px solid #d1d5db; border-radius:10px; overflow:hidden; height:20px; }
+  .bar { height:100%; width:0%; background:linear-gradient(90deg, var(--accent), var(--warn), var(--bad)); transition:width .15s linear; }
+  .badge { display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; background:#e0e7ff; color:#1e3a8a; }
+  .mode { padding:5px 10px; font-weight:700; border-radius:999px; }
+  .mode.cpu { background:#e5e7eb; color:#374151; }
+  .mode.gpu { background:#dcfce7; color:#166534; }
+  .mode.down { background:#fee2e2; color:#991b1b; }
+  .mini { font-size:12px; color:#6b7280; }
+  .pill { display:inline-block; padding:4px 8px; border-radius:999px; border:1px solid #d1d5db; background:#f9fafb; color:#111827; }
+  .two { display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px; }
+  canvas { width:100%; height:180px; background:#fff; border:1px solid #d1d5db; border-radius:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>
+    <div class="left">
+      <span>WebRTC Latency Demo</span>
+      <span class="badge">CPU vs GPU</span>
+      <span id="modeBadge" class="mode down">Unavailable</span>
+    </div>
+    <span id="clock" class="clock">--:--:--</span>
+  </h1>
+  <p class="sub">Test endpoint latency and see p95, replicas, and rough $/hour. Compare CPU-only vs GPU mode.</p>
+
+  <div class="card controls">
+    <label>Endpoint URL</label>
+    <input id="endpoint" value="http://localhost:8080/process" />
+
+    <div class="row">
+      <div style="flex:1; min-width:0">
+        <label>Concurrency</label>
+        <input id="concurrency" type="number" min="1" max="200" value="20" />
+      </div>
+      <div style="flex:1; min-width:0">
+        <label>Pixels</label>
+        <select id="pixels">
+          <option>1280x720</option>
+          <option selected>1920x1080</option>
+          <option>2560x1440</option>
+        </select>
+      </div>
+      <div style="flex:1; min-width:0">
+        <label>Iters</label>
+        <input id="iters" type="number" min="1" max="50" value="12" />
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <div style="flex:1">
+        <label>Bucket Size (p95 chart)</label>
+        <select id="bucketSize">
+          <option value="1000">1s</option>
+          <option value="5000" selected>5s</option>
+          <option value="10000">10s</option>
+          <option value="30000">30s</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:10px; align-items:flex-end">
+        <button class="start" id="startBtn">Start</button>
+        <button class="stop" id="stopBtn">Stop</button>
+        <button class="pill" id="gpuToggle" style="cursor:pointer; font-weight:600">🚀 Enable GPU</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><h3>Last (ms)</h3><div class="val" id="current">–</div></div>
+      <div class="stat"><h3>Avg (ms)</h3><div class="val" id="avg">–</div></div>
+      <div class="stat"><h3>p95 (ms)</h3><div class="val" id="p95">–</div></div>
+      <div class="stat"><h3>RPS (req/s)</h3><div class="val" id="rps">–</div></div>
+    </div>
+    <div class="hint">Last = most recent request. Avg = rolling average. p95 = per-bucket (size above). RPS = requests finished in the last second.</div>
+
+    <div class="bar-wrap"><div class="bar" id="bar"></div></div>
+
+    <div class="two">
+      <div>
+        <div class="mini">Replicas</div>
+        <input id="replicas" type="number" min="1" value="1" style="width:80px; margin-top:4px" />
+      </div>
+      <div>
+        <div class="mini">Cost estimate ($/hour)</div>
+        <div class="pill" style="margin-top:4px">≈ <span id="costNow">0.00</span> $/hr</div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px">
+      <div class="mini">Latency p95 (bucketed)</div>
+      <canvas id="chart" width="800" height="180"></canvas>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+  <div class="row" style="align-items:flex-end; gap:14px">
+    <div style="flex:1">
+      <div class="mini">Video Smoothness Simulator</div>
+      <video id="demoVideo" width="100%" muted playsinline loop style="border:1px solid #d1d5db; border-radius:8px"></video>
+      <div class="mini" style="margin-top:6px">
+        Source:
+        <select id="videoSource">
+          <option value="sample">Sample clip</option>
+          <option value="webcam">Webcam</option>
+        </select>
+        <label style="margin-left:10px">
+          <input id="simToggle" type="checkbox" checked>
+          Simulate choppy when p95 is high
+        </label>
+        <label style="margin-left:10px">
+          Threshold p95 (ms):
+          <input id="simThresh" type="number" value="250" style="width:70px">
+        </label>
+      </div>
+    </div>
+    <div style="width:240px">
+      <div class="stat" style="text-align:left">
+        <h3>Video Stats</h3>
+        <div class="mini">Mode: <span id="vMode">—</span></div>
+        <div class="mini">FPS (approx): <span id="vFps">—</span></div>
+        <div class="mini">Dropped frames (sim): <span id="vDrops">0</span></div>
+        <div class="mini">Playback: <span id="vState">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+(() => {
+  const el = id => document.getElementById(id);
+  const clockEl = el('clock');
+  const endpoint = el('endpoint');
+  const conc = el('concurrency');
+  const pixels = el('pixels');
+  const iters = el('iters');
+  const bucketSize = el('bucketSize');
+  const currentEl = el('current');
+  const avgEl = el('avg');
+  const p95El = el('p95');
+  const rpsEl = el('rps');
+  const bar = el('bar');
+  const startBtn = el('startBtn');
+  const stopBtn = el('stopBtn');
+  const gpuToggle = el('gpuToggle');
+  const modeBadge = el('modeBadge');
+  const replicasInput = el('replicas');
+  const costNow = el('costNow');
+  const chartEl = el('chart');
+
+
+  // New elements for the simulator:
+  const video = document.getElementById('demoVideo');
+  const sourceSel = document.getElementById('videoSource');
+  const simToggle = document.getElementById('simToggle');
+  const simThresh = document.getElementById('simThresh');
+  const vMode = document.getElementById('vMode');
+  const vFps = document.getElementById('vFps');
+  const vDrops = document.getElementById('vDrops');
+  const vState = document.getElementById('vState');
+
+  // live clock
+  function tickClock() { clockEl.textContent = new Date().toLocaleTimeString(); }
+  setInterval(tickClock, 1000); tickClock();
+
+  let running = false;
+  let totalCount = 0, lastTickCount = 0;
+  let latenciesRolling = [];
+  const ROLLING_MAX = 5000;
+  const MAX_BAR_MS = 1000;
+  let usingWebcam = false;
+  let stream = null;
+  let dropCount = 0;
+  let lastFrameTime = performance.now();
+  let fpsEMA = null; // exponential moving avg for FPS
+
+  // mode & cost
+  let mode = 'down'; // 'cpu' | 'gpu' | 'down'
+  function setMode(m) {
+    mode = m;
+    modeBadge.className = 'mode ' + (m.includes('cuda') ? 'gpu' : m);
+    
+    if (m === 'cuda-simulated') {
+      modeBadge.textContent = 'GPU';
+    } else if (m === 'gpu' || m === 'cuda') {
+      modeBadge.textContent = 'GPU';
+    } else if (m === 'cpu') {
+      modeBadge.textContent = 'CPU';
+    } else {
+      modeBadge.textContent = 'Unavailable';
+    }
+    
+    // Update GPU toggle button
+    if (m === 'cuda-simulated') {
+      gpuToggle.textContent = '💻 Disable GPU';
+      gpuToggle.style.background = '#dcfce7';
+      gpuToggle.style.color = '#166534';
+      gpuToggle.style.borderColor = '#bbf7d0';
+    } else {
+      gpuToggle.textContent = '🚀 Enable GPU';
+      gpuToggle.style.background = '#f9fafb';
+      gpuToggle.style.color = '#111827';
+      gpuToggle.style.borderColor = '#d1d5db';
+    }
+    
+    updateCost();
+  }
+  function healthURL() {
+    try { const u = new URL(endpoint.value); u.pathname = '/healthz'; u.search=''; return u.toString(); }
+    catch { return null; }
+  }
+  async function pollHealth() {
+    const url = healthURL();
+    if (!url) return setMode('down');
+    try {
+      const res = await fetch(url, { cache: 'no-store', mode: 'cors' });
+      if (!res.ok) return setMode('down');
+      const j = await res.json().catch(()=>({}));
+      const device = (j.device || '').toLowerCase();
+      if (typeof j.replicas === 'number') replicasInput.value = String(j.replicas);
+      setMode(device); // Pass the full device string to handle 'cuda-simulated'
+    } catch { setMode('down'); }
+  }
+
+  async function toggleGPU() {
+    try {
+      const baseUrl = endpoint.value.replace('/process', '');
+      const res = await fetch(`${baseUrl}/toggle-gpu-simulation`, { 
+        method: 'POST', 
+        mode: 'cors' 
+      });
+      
+      if (res.ok) {
+        const result = await res.json();
+        console.log('GPU toggled:', result);
+        // Poll health immediately to update UI
+        setTimeout(pollHealth, 100);
+      }
+    } catch (e) {
+      console.error('Failed to toggle GPU :', e);
+    }
+  }
+
+  // p95/helpers
+  function p95Of(arr) {
+    if (!arr.length) return 0;
+    const a = arr.slice().sort((x,y)=>x-y);
+    const i = Math.min(a.length - 1, Math.floor(0.95 * a.length));
+    return a[i];
+  }
+
+  // bucketed p95
+  let BUCKET_MS = parseInt(bucketSize.value, 10);   // from dropdown
+  const MAX_POINTS = 120;                            // last ~10min at 5s; ~2min at 30s
+  let currentBucketStart = Date.now();
+  let currentBucketSamples = [];
+  let seriesP95 = [];                                // [{t,p95}]
+
+  function resetBuckets() {
+    BUCKET_MS = parseInt(bucketSize.value, 10);
+    currentBucketStart = Date.now();
+    currentBucketSamples = [];
+    seriesP95 = [];
+    p95El.textContent = '–';
+    drawChart();
+  }
+
+  function flushBucket() {
+    if (!currentBucketSamples.length) return;
+    const p = p95Of(currentBucketSamples);
+    seriesP95.push({ t: currentBucketStart, p95: p });
+    if (seriesP95.length > MAX_POINTS) seriesP95.shift();
+    currentBucketStart = Date.now();
+    currentBucketSamples = [];
+    p95El.textContent = p.toFixed(0);
+    drawChart();
+  }
+
+  function drawChart() {
+    const ctx = chartEl.getContext('2d');
+    const w = chartEl.width, h = chartEl.height;
+    ctx.clearRect(0,0,w,h);
+    // axes
+    ctx.strokeStyle = '#d1d5db'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(40,10); ctx.lineTo(40,h-20); ctx.lineTo(w-10,h-20); ctx.stroke();
+    // scale
+    const values = seriesP95.map(p => p.p95).filter(v => v != null);
+    const max = Math.max(100, Math.max(...values, 0));
+    const yScale = (h-30) / max;
+    // grid labels
+    ctx.fillStyle = '#6b7280'; ctx.font = '12px system-ui';
+    [0, Math.round(max*0.5), max].forEach(v=>{
+      const y = (h-20) - v*yScale;
+      ctx.fillText(String(v), 6, y+4);
+      ctx.strokeStyle = 'rgba(17,24,39,0.08)';
+      ctx.beginPath(); ctx.moveTo(40, y); ctx.lineTo(w-10, y); ctx.stroke();
+    });
+    // line
+    ctx.strokeStyle = (mode === 'gpu') ? '#16a34a' : '#f59e0b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const span = seriesP95.length;
+    for (let i=0;i<span;i++){
+      const v = seriesP95[i].p95;
+      const x = 40 + (i * (w-50) / (span-1 || 1));
+      const y = (h-20) - (v * yScale);
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // labels
+    ctx.fillStyle = '#6b7280';
+    ctx.fillText('time → (' + (BUCKET_MS/1000) + 's buckets)', w-190, h-5);
+    ctx.fillText('p95 ms', 42, 14);
+  }
+
+  // request loop
+  async function shootOne(urlBase) {
+    const t0 = performance.now();
+    try {
+      const u = new URL(urlBase);
+      u.searchParams.set('pixels', pixels.value);
+      u.searchParams.set('iters', iters.value);
+      const res = await fetch(u.toString(), { method: 'POST', mode: 'cors' });
+      const ms = performance.now() - t0;
+      totalCount++;
+      if (res.ok) {
+        // rolling stats for Avg & Last
+        latenciesRolling.push(ms);
+        if (latenciesRolling.length > ROLLING_MAX) {
+          latenciesRolling.splice(0, latenciesRolling.length - ROLLING_MAX);
+        }
+        currentEl.textContent = ms.toFixed(0);
+        const w = Math.max(0, Math.min(100, (ms / MAX_BAR_MS) * 100));
+        bar.style.width = w + '%';
+
+        // add to current bucket
+        currentBucketSamples.push(ms);
+      }
+    } catch {
+      totalCount++;
+    }
+  }
+
+  function calcPeriodic() {
+    // RPS in last 1s
+    const delta = totalCount - lastTickCount;
+    lastTickCount = totalCount;
+    rpsEl.textContent = String(delta);
+
+    // Rolling Avg
+    const vals = latenciesRolling;
+    if (vals.length) {
+      const sum = vals.reduce((a,b)=>a+b,0);
+      const avg = sum / vals.length;
+      avgEl.textContent = avg.toFixed(0);
+    }
+
+    // finalize bucket if elapsed
+    const now = Date.now();
+    if (now - currentBucketStart >= BUCKET_MS) flushBucket();
+
+    updateCost();
+  }
+
+  function updateCost() {
+    const replicas = Math.max(0, parseInt(replicasInput.value||'0',10));
+    const unit = (mode === 'gpu' || mode === 'cuda-simulated' || mode.includes('cuda')) ? 0.90 : 0.12; // adjust to your real $/hr per pod
+    costNow.textContent = (unit * replicas).toFixed(2);
+  }
+
+  async function worker(urlBase) {
+    while (running) {
+      await shootOne(urlBase);
+      await new Promise(r => setTimeout(r, 5));
+    }
+  }
+  function start() {
+    running = true;
+    totalCount = 0; lastTickCount = 0;
+    latenciesRolling = [];
+    resetBuckets();
+    const url = endpoint.value;
+    for (let i=0;i<Math.max(1,+conc.value);i++) worker(url);
+  }
+  function stop() { running = false; }
+
+  // wire UI
+  startBtn.addEventListener('click', ()=>{ if(!running) start(); });
+  stopBtn.addEventListener('click', ()=> stop());
+  gpuToggle.addEventListener('click', toggleGPU);
+  endpoint.addEventListener('change', ()=> pollHealth());
+  bucketSize.addEventListener('change', ()=> resetBuckets());
+
+  // timers
+  setInterval(calcPeriodic, 1000);
+  setInterval(pollHealth, 3000);
+  pollHealth(); drawChart();
+
+   function loadSample() {
+    usingWebcam = false;
+    cleanupStream();
+    video.src = 'demo.mp4'; // place demo.mp4 next to your HTML and serve via python http.server
+    video.play().catch(()=>{ /* autoplay might be blocked until user clicks Start */ });
+  }
+
+  // Switch to webcam (getUserMedia)
+  async function loadWebcam() {
+    usingWebcam = true;
+    cleanupStream();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 360 }, audio: false });
+      video.srcObject = stream;
+      await video.play();
+    } catch (e) {
+      console.warn('Webcam unavailable:', e);
+      // fallback to sample
+      usingWebcam = false;
+      loadSample();
+    }
+  }
+
+  function cleanupStream() {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+    video.srcObject = null;
+  }
+
+  sourceSel.addEventListener('change', () => {
+    if (sourceSel.value === 'webcam') loadWebcam(); else loadSample();
+  });
+
+  // Stutter logic: when p95 above threshold AND simulation enabled AND likely CPU mode
+  function shouldStutter() {
+    const p95Val = parseFloat(p95El.textContent || '0');
+    const thresh = parseFloat(simThresh.value || '250');
+    const isSim = simToggle.checked;
+    const modeTxt = (modeBadge?.textContent || '').toLowerCase(); // 'cpu', 'gpu', 'unavailable'
+    const cpuOrDown = modeTxt.includes('cpu') || modeTxt.includes('unavailable');
+    vMode.textContent = modeTxt.toUpperCase() || '—';
+    return isSim && cpuOrDown && p95Val >= thresh;
+  }
+
+  // Apply stutter: brief pauses or tiny skips to mimic dropped frames
+  function maybeStutter() {
+    if (!video) return;
+    if (!shouldStutter()) { 
+      // Ensure playback is normal
+      if (video.paused) {
+        video.play().catch(()=>{});
+      }
+      video.playbackRate = 1.0;
+      vState.textContent = 'Smooth';
+      return;
+    }
+    // Simulate stutter: randomly pause for 100–250ms about 2–3 times per second
+    const r = Math.random();
+    if (r < 0.25) {
+      // micro pause
+      video.playbackRate = 0.2;
+      setTimeout(() => { video.playbackRate = 1.0; }, 120 + Math.random()*150);
+      dropCount++;
+      vDrops.textContent = String(dropCount);
+      vState.textContent = 'Choppy';
+    } else if (r < 0.3 && !usingWebcam) {
+      // tiny time skip (sample video only)
+      try {
+        video.currentTime = Math.min(video.duration || video.currentTime+0.05, video.currentTime + 0.03);
+        dropCount++;
+        vDrops.textContent = String(dropCount);
+        vState.textContent = 'Choppy (skip)';
+      } catch {}
+    }
+  }
+
+  // Approx FPS from render timestamps
+  function tickFPS() {
+    const now = performance.now();
+    const dt = now - lastFrameTime;
+    lastFrameTime = now;
+    if (dt > 0 && dt < 1000) {
+      const inst = 1000 / dt;
+      fpsEMA = (fpsEMA == null) ? inst : (fpsEMA * 0.9 + inst * 0.1);
+      vFps.textContent = fpsEMA.toFixed(1);
+    }
+    requestAnimationFrame(tickFPS);
+  }
+
+  // Kick off
+  loadSample();
+  requestAnimationFrame(tickFPS);
+  setInterval(maybeStutter, 350); // check several times per second
+})();
+</script>
+<style>
+  /* (Optional) Make the mini labels slightly tighter in the new card */
+  .card .mini { line-height: 1.35; }
+</style>
+</body>
+</html>

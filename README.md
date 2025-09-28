@@ -1,6 +1,24 @@
-# RTC Scale Demo (WebRTC GPU Media Service)
+# WebRTC Scaling Demo: Cloud-Native Real-Time Media Processing
 
-This repo contains a minimal GPU-accelerated "media" service (FastAPI + PyTorch) with Prometheus metrics, Kubernetes manifests, and autoscaling by CPU **or** request latency (via KEDA or Prometheus Adapter). It supports GPU (CUDA) and will fall back to CPU if GPUs aren't available.
+> **Demo Overview**: This repository demonstrates how to scale WebRTC applications reliably using Docker and Kubernetes with GPU acceleration. We'll show a containerized media service that simulates real-time video effects (like background blur or translation), while Kubernetes handles GPU scheduling and autoscaling using Prometheus and Grafana dashboards to maintain p95 latency within target SLOs.
+
+## 🎯 What This Demo Shows
+
+- **WebRTC Media Processing**: Containerized service simulating real-time video effects
+- **GPU Acceleration**: CUDA-enabled processing with CPU fallback
+- **Kubernetes Autoscaling**: HPA based on CPU utilization and custom latency metrics
+- **Observability**: Real-time monitoring with Prometheus metrics and Grafana dashboards
+- **Production Resilience**: How cloud-native patterns make WebRTC workloads scalable and resilient
+
+## 🏗️ Architecture
+
+This demo includes:
+- **FastAPI + PyTorch** media service with GPU acceleration
+- **Prometheus metrics** for monitoring request latency and throughput
+- **Kubernetes manifests** for deployment and autoscaling
+- **KEDA or Prometheus Adapter** for latency-based scaling
+- **Load generation scripts** to demonstrate scaling behavior
+- **Grafana dashboards** for real-time visualization
 
 ## Quickstart
 
@@ -87,11 +105,34 @@ kubectl -n rtc apply -f k8s/hpa-latency-custom.yaml
 > The app exports a rolling gauge `app_request_latency_p95_seconds`. Prometheus Adapter maps it to `app_latency_p95_seconds` for HPA.
 
 ## Drive Load & Watch Scale
+
+### Quick Load Test
 ```bash
 SVC_IP=$(kubectl -n rtc get svc gpu-media -o jsonpath='{.spec.clusterIP}')
 bash scripts/load_gen.sh "http://${SVC_IP}/process?pixels=1920x1080&iters=10" 40 800
 kubectl -n rtc get hpa -w
 ```
+
+### Presentation-Ready Demo
+For live presentations, use the enhanced demo script:
+```bash
+# Start with baseline load
+./scripts/demo_load_gen.sh baseline
+
+# Moderate load to trigger scaling
+./scripts/demo_load_gen.sh moderate  
+
+# Heavy load for dramatic scaling demo
+./scripts/demo_load_gen.sh heavy
+```
+
+## 🎤 Presentation Materials
+
+This repository includes presentation-ready materials:
+
+- **[📋 DEMO_SCRIPT.md](DEMO_SCRIPT.md)** - Complete step-by-step demo script with timing and talking points
+- **[🏗️ ARCHITECTURE.md](ARCHITECTURE.md)** - Visual architecture diagrams and system overview  
+- **[🎯 scripts/demo_load_gen.sh](scripts/demo_load_gen.sh)** - Enhanced load generator with colored output and scenarios
 
 ## Security Notes
 - Use a private registry (sample Gatekeeper constraint provided).
