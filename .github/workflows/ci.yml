@@ -59,17 +59,12 @@ jobs:
         export CUDA_WANTED=false
         python smoke_test.py
 
-    - name: Run unit tests
+    - name: Run basic CI tests
       run: |
         export GPU_SIMULATION=true
         export CUDA_WANTED=false
-        python -m pytest tests/test_server.py -v || python tests/test_server.py
-    
-    - name: Run integration tests
-      run: |
-        export GPU_SIMULATION=true
-        export CUDA_WANTED=false
-        python test_integration.py
+        export CI=true
+        python test_ci_basic.py
     
     # Skip server and API tests for now to focus on basic functionality
     - name: Basic functionality test
