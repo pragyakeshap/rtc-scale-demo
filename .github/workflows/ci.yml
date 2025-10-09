@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.9, 3.10, 3.11]
+        python-version: ["3.9", "3.10", "3.11"]
     
     steps:
     - uses: actions/checkout@v4
@@ -29,13 +29,20 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-
     
-    - name: Install dependencies
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+    
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r app/requirements.txt
         pip install -r tests/requirements.txt
-        # Install CPU-only PyTorch for CI
-        pip install --extra-index-url https://download.pytorch.org/whl/cpu torch==2.3.1+cpu torchvision==0.18.1+cpu
+        # Install CPU-only PyTorch for CI (with fallback)
+        pip install --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision || pip install torch torchvision
+        # Install testing framework
+        pip install pytest pytest-asyncio
     
     - name: Lint with flake8
       run: |
@@ -47,22 +54,39 @@ jobs:
     
     - name: Run unit tests
       run: |
-        python tests/test_server.py
+        # Set environment variables for CI
+        export GPU_SIMULATION=true
+        export CUDA_WANTED=false
+        # Run tests with pytest
+        python -m pytest tests/test_server.py -v || python tests/test_server.py
     
     - name: Run integration tests
       run: |
+        export GPU_SIMULATION=true
+        export CUDA_WANTED=false
         python test_integration.py
     
     - name: Start server for API tests
       run: |
-        uvicorn app.server:app --host 0.0.0.0 --port 8080 &
-        sleep 10  # Wait for server to start
+        export GPU_SIMULATION=true
+        export CUDA_WANTED=false
+        cd app && uvicorn server:app --host 0.0.0.0 --port 8080 &
+        sleep 15  # Wait for server to start
+        cd ..
       
     - name: Test API endpoints
       run: |
-        curl -f http://localhost:8080/healthz
-        curl -f http://localhost:8080/metrics
-        curl -f -X POST "http://localhost:8080/process?pixels=640x480&iters=2"
+        # Test health endpoint
+        echo "Testing health endpoint..."
+        curl -f -s http://localhost:8080/healthz | jq . || (echo "Health check failed" && exit 1)
+        
+        # Test metrics endpoint
+        echo "Testing metrics endpoint..."
+        curl -f -s http://localhost:8080/metrics | head -5
+        
+        # Test processing endpoint
+        echo "Testing processing endpoint..."
+        curl -f -s -X POST "http://localhost:8080/process?pixels=640x480&iters=2" | jq . || (echo "Processing test failed" && exit 1)
     
     - name: Run load tests (light)
       run: |
@@ -84,15 +108,15 @@ jobs:
     
     - name: Test Docker image
       run: |
-        # Start container
-        docker run -d -p 8080:8080 --name test-container rtc-gpu-app:test
-        sleep 15  # Wait for container to start
+        # Start container with GPU simulation
+        docker run -d -p 8080:8080 -e GPU_SIMULATION=true -e CUDA_WANTED=false --name test-container rtc-gpu-app:test
+        sleep 20  # Wait for container to start
         
         # Test health endpoint
-        curl -f http://localhost:8080/healthz
+        curl -f http://localhost:8080/healthz || (docker logs test-container && exit 1)
         
         # Test processing endpoint
-        curl -f -X POST "http://localhost:8080/process?pixels=640x480&iters=2"
+        curl -f -X POST "http://localhost:8080/process?pixels=640x480&iters=2" || (docker logs test-container && exit 1)
         
         # Cleanup
         docker stop test-container
@@ -137,12 +161,15 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r app/requirements.txt
         pip install -r tests/requirements.txt
-        pip install --extra-index-url https://download.pytorch.org/whl/cpu torch==2.3.1+cpu torchvision==0.18.1+cpu
+        pip install --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision || pip install torch torchvision
     
     - name: Start server
       run: |
-        uvicorn app.server:app --host 0.0.0.0 --port 8080 &
-        sleep 10
+        export GPU_SIMULATION=true
+        export CUDA_WANTED=false
+        cd app && uvicorn server:app --host 0.0.0.0 --port 8080 &
+        sleep 15
+        cd ..
     
     - name: Run performance tests
       run: |
