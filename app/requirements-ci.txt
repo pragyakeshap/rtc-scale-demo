@@ -1,0 +1,10 @@
+# Minimal dependencies for CI/CD testing
+fastapi==0.112.2
+uvicorn[standard]==0.30.6
+prometheus_client==0.20.0
+torch>=2.0.0
+numpy>=1.24.0
+# Skip heavy dependencies for CI
+# opencv-python>=4.8.0  # Often causes build issues in CI
+# aiortc>=1.6.0         # Heavy dependency, skip for basic tests
+aiofiles>=23.0.0
