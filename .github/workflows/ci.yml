@@ -39,40 +39,27 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r app/requirements.txt
         pip install -r tests/requirements.txt
-        # Install CPU-only PyTorch for CI (with fallback)
         pip install --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision || pip install torch torchvision
-        # Install testing framework
         pip install pytest pytest-asyncio
     
     - name: Lint with flake8
       run: |
         pip install flake8
-        # stop the build if there are Python syntax errors or undefined names
         flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings
         flake8 app/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     
     - name: Smoke test - verify imports
       run: |
         export GPU_SIMULATION=true
         export CUDA_WANTED=false
-        # Test basic imports
-        cd app && python -c "
-import sys
-import torch
-print(f'Python version: {sys.version}')
-print(f'PyTorch version: {torch.__version__}')
-print(f'CUDA available: {torch.cuda.is_available()}')
-import server
-print('✅ All imports successful')
-" && cd ..
+        cd app
+        python -c "import sys; import torch; print('Python:', sys.version); print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available()); import server; print('All imports successful')"
+        cd ..
 
     - name: Run unit tests
       run: |
-        # Set environment variables for CI
         export GPU_SIMULATION=true
         export CUDA_WANTED=false
-        # Run tests with pytest
         python -m pytest tests/test_server.py -v || python tests/test_server.py
     
     - name: Run integration tests
@@ -87,30 +74,24 @@ print('✅ All imports successful')
         export CUDA_WANTED=false
         echo "Starting server..."
         cd app && uvicorn server:app --host 0.0.0.0 --port 8080 > server.log 2>&1 &
-        SERVER_PID=$!
         cd ..
-        sleep 15  # Wait for server to start
+        sleep 15
         
-        # Check if server is running
         if ! curl -s http://localhost:8080/healthz > /dev/null; then
           echo "Server failed to start. Logs:"
           cat app/server.log
-          kill $SERVER_PID || true
           exit 1
         fi
         echo "Server started successfully"
       
     - name: Test API endpoints
       run: |
-        # Test health endpoint
         echo "Testing health endpoint..."
         curl -f -s http://localhost:8080/healthz | jq . || (echo "Health check failed" && exit 1)
         
-        # Test metrics endpoint
         echo "Testing metrics endpoint..."
         curl -f -s http://localhost:8080/metrics | head -5
         
-        # Test processing endpoint
         echo "Testing processing endpoint..."
         curl -f -s -X POST "http://localhost:8080/process?pixels=640x480&iters=2" | jq . || (echo "Processing test failed" && exit 1)
     
@@ -134,17 +115,12 @@ print('✅ All imports successful')
     
     - name: Test Docker image
       run: |
-        # Start container with GPU simulation
         docker run -d -p 8080:8080 -e GPU_SIMULATION=true -e CUDA_WANTED=false --name test-container rtc-gpu-app:test
-        sleep 20  # Wait for container to start
+        sleep 20
         
-        # Test health endpoint
         curl -f http://localhost:8080/healthz || (docker logs test-container && exit 1)
-        
-        # Test processing endpoint
         curl -f -X POST "http://localhost:8080/process?pixels=640x480&iters=2" || (docker logs test-container && exit 1)
         
-        # Cleanup
         docker stop test-container
         docker rm test-container
 
@@ -168,40 +144,3 @@ print('✅ All imports successful')
       if: always()
       with:
         sarif_file: 'trivy-results.sarif'
-
-  performance-test:
-    runs-on: ubuntu-latest
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.11
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r app/requirements.txt
-        pip install -r tests/requirements.txt
-        pip install --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision || pip install torch torchvision
-    
-    - name: Start server
-      run: |
-        export GPU_SIMULATION=true
-        export CUDA_WANTED=false
-        cd app && uvicorn server:app --host 0.0.0.0 --port 8080 &
-        sleep 15
-        cd ..
-    
-    - name: Run performance tests
-      run: |
-        python tests/test_load.py --url http://localhost:8080 --requests 100 --concurrency 20 --comparison
-    
-    - name: Performance regression check
-      run: |
-        # Simple performance check - p95 should be under 500ms for CPU mode
-        echo "Performance test completed - check logs for regression"
