@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Enhanced load generation for presentation demos
-# Usage: ./demo_load_gen.sh [scenario] [service_ip]
+# Enhanced load generation for application presentation
+# Usage: ./app_load_gen.sh [scenario] [service_ip]
 
 SCENARIO="${1:-moderate}"
 SERVICE_IP="${2:-$(kubectl -n rtc get svc gpu-media -o jsonpath='{.spec.clusterIP}' 2>/dev/null || echo 'localhost:8080')}"

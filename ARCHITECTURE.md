@@ -45,7 +45,7 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Key Demo Metrics
+## Key Application Metrics
 
 ### 🎯 Primary SLO Metrics
 - **Request Latency P95**: < 100ms (target for scaling)
@@ -87,7 +87,7 @@ Video Frame → Container → PyTorch/CUDA → Effects Processing → Output
 (simulated WebRTC streams)
 ```
 
-## Demo Flow Visualization
+## Application Flow Visualization
 
 ```
 Time →  0s    30s   60s   90s   120s  150s  180s  210s  240s
@@ -116,7 +116,7 @@ Legend:
 - **Multi-Zone Deployment**: High availability across AZs
 - **Graceful Shutdown**: Proper handling of termination signals
 
-## Key Technologies Demonstrated
+## Key Technologies Implemented
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|

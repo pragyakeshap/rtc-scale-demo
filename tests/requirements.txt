@@ -1,0 +1,26 @@
+# Test dependencies for WebRTC GPU Application
+# Core testing framework
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+
+# HTTP testing
+httpx>=0.24.0
+aiohttp>=3.8.0
+requests>=2.28.0
+
+# FastAPI testing  
+fastapi[all]>=0.100.0
+
+# Mocking and fixtures
+pytest-mock>=3.10.0
+responses>=0.23.0
+
+# Load testing
+locust>=2.14.0
+
+# Kubernetes testing (optional)
+kubernetes>=26.1.0
+
+# Async testing utilities
+asyncio-mqtt>=0.13.0

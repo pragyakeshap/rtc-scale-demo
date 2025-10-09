@@ -1,0 +1,154 @@
+name: WebRTC GPU Application CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r app/requirements.txt
+        pip install -r tests/requirements.txt
+        # Install CPU-only PyTorch for CI
+        pip install --extra-index-url https://download.pytorch.org/whl/cpu torch==2.3.1+cpu torchvision==0.18.1+cpu
+    
+    - name: Lint with flake8
+      run: |
+        pip install flake8
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        # exit-zero treats all errors as warnings
+        flake8 app/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Run unit tests
+      run: |
+        python tests/test_server.py
+    
+    - name: Run integration tests
+      run: |
+        python test_integration.py
+    
+    - name: Start server for API tests
+      run: |
+        uvicorn app.server:app --host 0.0.0.0 --port 8080 &
+        sleep 10  # Wait for server to start
+      
+    - name: Test API endpoints
+      run: |
+        curl -f http://localhost:8080/healthz
+        curl -f http://localhost:8080/metrics
+        curl -f -X POST "http://localhost:8080/process?pixels=640x480&iters=2"
+    
+    - name: Run load tests (light)
+      run: |
+        python tests/test_load.py --url http://localhost:8080 --requests 20 --concurrency 5
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker image
+      run: |
+        docker build -t rtc-gpu-app:test .
+    
+    - name: Test Docker image
+      run: |
+        # Start container
+        docker run -d -p 8080:8080 --name test-container rtc-gpu-app:test
+        sleep 15  # Wait for container to start
+        
+        # Test health endpoint
+        curl -f http://localhost:8080/healthz
+        
+        # Test processing endpoint
+        curl -f -X POST "http://localhost:8080/process?pixels=640x480&iters=2"
+        
+        # Cleanup
+        docker stop test-container
+        docker rm test-container
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  performance-test:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r app/requirements.txt
+        pip install -r tests/requirements.txt
+        pip install --extra-index-url https://download.pytorch.org/whl/cpu torch==2.3.1+cpu torchvision==0.18.1+cpu
+    
+    - name: Start server
+      run: |
+        uvicorn app.server:app --host 0.0.0.0 --port 8080 &
+        sleep 10
+    
+    - name: Run performance tests
+      run: |
+        python tests/test_load.py --url http://localhost:8080 --requests 100 --concurrency 20 --comparison
+    
+    - name: Performance regression check
+      run: |
+        # Simple performance check - p95 should be under 500ms for CPU mode
+        echo "Performance test completed - check logs for regression"

@@ -1,20 +1,67 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: gpu-media-hpa-latency
+  name: gpu-media-hpa-advanced
   namespace: rtc
+  labels:
+    app: gpu-media
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: gpu-media
-  minReplicas: 1
-  maxReplicas: 5
+  minReplicas: 2
+  maxReplicas: 20
   metrics:
+  # Primary metric: P95 latency
   - type: Pods
     pods:
       metric:
-        name: app_latency_p95_seconds
+        name: app_request_latency_p95_seconds
       target:
         type: AverageValue
-        averageValue: "0.20"
+        averageValue: "0.1"  # Scale up if p95 > 100ms
+  # Secondary metric: GPU utilization
+  - type: Resource
+    resource:
+      name: nvidia.com/gpu
+      target:
+        type: Utilization
+        averageUtilization: 70  # Scale up if GPU > 70% utilized
+  # Tertiary metric: CPU utilization (fallback)
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  # Request rate metric
+  - type: Pods
+    pods:
+      metric:
+        name: app_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "50"  # Scale up if RPS > 50 per pod
+  # Custom scaling behavior
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60  # Wait 1 minute before scaling up
+      selectPolicy: Max  # Use the metric that suggests the highest replica count
+      policies:
+      - type: Percent
+        value: 100  # Can double the number of pods
+        periodSeconds: 60
+      - type: Pods
+        value: 4  # Can add up to 4 pods at once
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
+      selectPolicy: Min  # Use the metric that suggests the lowest replica count
+      policies:
+      - type: Percent
+        value: 10  # Can reduce by max 10% of pods
+        periodSeconds: 60
+      - type: Pods
+        value: 2  # Can remove max 2 pods at once
+        periodSeconds: 60

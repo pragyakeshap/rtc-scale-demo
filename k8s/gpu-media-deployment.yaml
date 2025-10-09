@@ -3,8 +3,11 @@ kind: Deployment
 metadata:
   name: gpu-media
   namespace: rtc
+  labels:
+    app: gpu-media
+    version: v2
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: gpu-media
@@ -12,18 +15,34 @@ spec:
     metadata:
       labels:
         app: gpu-media
+        version: v2
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
     spec:
       nodeSelector:
         nvidia.com/gpu.present: "true"
+        accelerator: nvidia-tesla-t4  # Specify GPU type
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
       containers:
       - name: gpu-media
-        image: gcr.io/YOUR_PROJECT/gpu-media:v1
+        image: gcr.io/YOUR_PROJECT/gpu-media:v2
         imagePullPolicy: IfNotPresent
         env:
         - name: CUDA_WANTED
           value: "true"
+        - name: GPU_SIMULATION
+          value: "false"  # Use real GPU processing
+        - name: GPU_SPEEDUP_FACTOR
+          value: "25.0"
+        - name: PYTHONUNBUFFERED
+          value: "1"
         ports:
-        - name: http
+        - name: http-metrics
           containerPort: 8080
         resources:
           requests:
@@ -31,13 +50,41 @@ spec:
             memory: "2Gi"
             nvidia.com/gpu: 1
           limits:
-            cpu: "2"
-            memory: "4Gi"
+            cpu: "4"
+            memory: "8Gi"
             nvidia.com/gpu: 1
+        # Enhanced health checks
+        livenessProbe:
+          httpGet: 
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
-          httpGet: { path: /healthz, port: 8080 }
+          httpGet: 
+            path: /healthz
+            port: 8080
           initialDelaySeconds: 10
           periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        # Startup probe for GPU initialization
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 30  # Allow 2.5 minutes for GPU initialization
+        # Security context
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # PyTorch needs write access for compilation
         livenessProbe:
           httpGet: { path: /healthz, port: 8080 }
           initialDelaySeconds: 20

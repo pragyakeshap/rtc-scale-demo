@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>WebRTC Latency Demo – CPU vs GPU</title>
+<title>WebRTC GPU Application – CPU vs GPU</title>
 <style>
   :root {
     --bg:#f9fafb; --card:#ffffff; --muted:#6b7280;
@@ -44,7 +44,7 @@
 <div class="wrap">
   <h1>
     <div class="left">
-      <span>WebRTC Latency Demo</span>
+      <span>WebRTC GPU Application</span>
       <span class="badge">CPU vs GPU</span>
       <span id="modeBadge" class="mode down">Unavailable</span>
     </div>
@@ -120,7 +120,7 @@
       <!-- Video Section -->
       <div style="flex:1; min-width:300px; max-width:350px">
         <div class="mini">Video Smoothness Simulator</div>
-        <video id="demoVideo" width="100%" muted playsinline loop style="border:1px solid #d1d5db; border-radius:8px; margin-top:6px"></video>
+        <video id="appVideo" width="100%" muted playsinline loop style="border:1px solid #d1d5db; border-radius:8px; margin-top:6px"></video>
         <div class="mini" style="margin-top:8px">
           Source:
           <select id="videoSource" style="margin-left:6px">
@@ -181,7 +181,7 @@
 
 
   // New elements for the simulator:
-  const video = document.getElementById('demoVideo');
+  const video = document.getElementById('appVideo');
   const sourceSel = document.getElementById('videoSource');
   const simToggle = document.getElementById('simToggle');
   const simThresh = document.getElementById('simThresh');
@@ -430,7 +430,7 @@
    function loadSample() {
     usingWebcam = false;
     cleanupStream();
-    video.src = 'demo.mp4'; // place demo.mp4 next to your HTML and serve via python http.server
+    video.src = 'sample.mp4'; // place sample.mp4 next to your HTML and serve via python http.server
     video.play().catch(()=>{ /* autoplay might be blocked until user clicks Start */ });
   }
 

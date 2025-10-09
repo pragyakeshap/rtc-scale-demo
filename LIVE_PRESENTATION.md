@@ -1,13 +1,13 @@
-# 🎤 Live Demo Script: WebRTC Scaling with Kubernetes
+# 🎤 Live Presentation Script: WebRTC Scaling with Kubernetes
 
-## Pre-Demo Setup Checklist
+## Pre-Presentation Setup Checklist
 - [ ] GKE cluster with GPU node pool running
 - [ ] Prometheus and Grafana installed and accessible  
 - [ ] Application deployed and healthy
 - [ ] Grafana dashboard imported
 - [ ] Load generation script ready
 
-## Demo Flow (15-20 minutes)
+## Presentation Flow (15-20 minutes)
 
 ### 1. Introduction (2 minutes)
 **"Today I'll show you how to make WebRTC applications scale reliably in production using cloud-native patterns."**
@@ -45,7 +45,7 @@ SVC_IP=$(kubectl -n rtc get svc gpu-media -o jsonpath='{.spec.clusterIP}')
 curl -s "http://${SVC_IP}/process?pixels=1280x720&iters=5" | jq
 ```
 
-### 3. Load Generation & Scaling Demo (8 minutes)
+### 3. Load Generation & Scaling Application (8 minutes)
 **"Now let's simulate a traffic spike and watch Kubernetes automatically scale our service."**
 
 **Start monitoring (in separate terminals):**
@@ -131,7 +131,7 @@ kubectl -n rtc get hpa -w
 - Observable, scalable, and resilient real-time media processing
 
 ## Quick Recovery Commands
-If something goes wrong during demo:
+If something goes wrong during presentation:
 
 ```bash
 # Reset deployment
@@ -145,7 +145,7 @@ kubectl -n rtc port-forward svc/gpu-media 8080:80
 curl localhost:8080/metrics
 ```
 
-## Demo URLs to Bookmark
+## Presentation URLs to Bookmark
 - Grafana Dashboard: `http://grafana-url/d/webrtc-scaling`
 - Prometheus: `http://prometheus-url`
 - Application metrics: `http://service-ip/metrics`
